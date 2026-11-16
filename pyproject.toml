@@ -1,0 +1,35 @@
+[project]
+name = "lunar-landing-site-navigator"
+version = "0.1.0"
+description = "Django and Vue foundation for the Lunar Landing Site Navigator"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["backend"]
+
+[dependency-groups]
+dev = ["pre-commit>=4.2,<5", "ruff>=0.11.2,<1"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core.settings.dev_pytest"
+pythonpath = ["backend"]
+testpaths = ["backend/core/tests", "backend/terrain/tests", "backend/ephemeris/tests"]
+
+[tool.ruff]
+line-length = 150
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "tab"
+docstring-code-format = true
+exclude = ["**/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "DJ", "UP"]
+ignore = ["W191"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*" = ["ALL"]

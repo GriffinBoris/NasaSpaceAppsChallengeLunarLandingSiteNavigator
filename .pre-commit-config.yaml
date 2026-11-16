@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: backend-lint
+        name: Backend lint and formatting
+        entry: task docker:backend:lint
+        language: system
+        types: [python]
+        pass_filenames: false

@@ -1,0 +1,84 @@
+x-backend: &backend
+  image: lunar-navigator:dev
+  build:
+    context: .
+    dockerfile: docker/dockerfiles/web/Dockerfile
+  user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+  init: true
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DJANGO_SETTINGS_MODULE: core.settings.dev_docker
+  volumes:
+    - ./backend:/app/backend
+
+services:
+  frontend:
+    image: lunar-navigator-frontend:dev
+    build:
+      context: .
+      dockerfile: docker/dockerfiles/web/Dockerfile
+      target: frontend-base
+    command: ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0"]
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/static/').then(response => process.exit(response.ok ? 0 : 1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    <<: *backend
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.dev_docker
+      FRONTEND_DEV_URL: http://localhost:5173
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8000}:8000"
+    depends_on:
+      frontend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          from urllib.request import urlopen
+
+          with urlopen('http://127.0.0.1:8000/', timeout=3) as response:
+              response.read(1)
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  celery:
+    <<: *backend
+    command: ["celery", "-A", "core.celery", "worker", "--loglevel=INFO"]
+    stop_grace_period: 1m
+    depends_on:
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+volumes:
+  redis_data:

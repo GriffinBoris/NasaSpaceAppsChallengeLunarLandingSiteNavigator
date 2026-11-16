@@ -1,0 +1,17 @@
+version: '3'
+
+includes:
+  docker:
+    taskfile: ./tasks/docker.yml
+    dir: .
+
+  setup:
+    taskfile: ./tasks/setup.yml
+    dir: .
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+    silent: true

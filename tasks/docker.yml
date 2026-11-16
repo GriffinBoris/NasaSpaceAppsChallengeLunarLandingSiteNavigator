@@ -1,0 +1,258 @@
+version: '3'
+
+vars:
+  ROOT_DIR: "."
+  DOCKER_COMPOSE: "./docker-compose.yaml"
+  DOCKER_SERVICE: web
+  TERRAIN_WORKERS: '{{default "2" .WORKERS}}'
+  LOCAL_UID:
+    sh: id -u
+  LOCAL_GID:
+    sh: id -g
+
+env:
+  LOCAL_UID: '{{.LOCAL_UID}}'
+  LOCAL_GID: '{{.LOCAL_GID}}'
+
+tasks:
+  default:
+    desc: Show Docker tasks
+    cmds:
+      - task --list
+    silent: true
+
+  setup:
+    desc: Build Docker images and start the stack in the background
+    cmds:
+      - task: start
+
+  dev:
+    desc: Run the Docker development stack in the foreground
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" up --build
+
+  test:
+    desc: Run backend tests inside Docker
+    cmds:
+      - task: backend:test
+
+  lint:
+    desc: Run backend lint inside Docker
+    cmds:
+      - task: backend:lint
+
+  check:
+    desc: Build the stack and check backend and frontend code
+    cmds:
+      - task: start
+      - task: backend:lint
+      - task: backend:check
+      - task: backend:test
+      - task: frontend:lint
+      - task: frontend:test
+
+  build:
+    desc: Build Docker images for the stack
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" build
+
+  start:
+    desc: Start the Docker stack in the background with rebuilt images
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" up --build --detach --wait
+
+  down:
+    desc: Shut down the Docker stack and keep its data
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" down
+
+  restart:
+    desc: Stop, rebuild, and start the Docker stack in the background
+    cmds:
+      - task: down
+      - task: start
+
+  logs:
+    desc: Follow Docker service logs
+    dir: '{{.ROOT_DIR}}'
+    vars:
+      SERVICE: '{{default .DOCKER_SERVICE .SERVICE}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" logs --follow {{.SERVICE}}
+
+  shell:
+    desc: Open a Django shell inside Docker
+    dir: '{{.ROOT_DIR}}'
+    interactive: true
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py shell
+
+  manage:
+    desc: Run a Django management command inside Docker
+    dir: '{{.ROOT_DIR}}'
+    requires:
+      vars: [CMD]
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py {{.CMD}}
+
+  backend:test:
+    desc: Run backend tests inside Docker using a temporary database
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T --workdir /app --env DJANGO_SETTINGS_MODULE=core.settings.dev_pytest {{.DOCKER_SERVICE}} python -m pytest -p no:cacheprovider {{.CLI_ARGS}}
+
+  backend:tests:coverage:
+    desc: Run backend tests with coverage inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T --env DJANGO_SETTINGS_MODULE=core.settings.dev_pytest {{.DOCKER_SERVICE}} coverage run -m pytest -p no:cacheprovider {{.CLI_ARGS}}
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T {{.DOCKER_SERVICE}} coverage report
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T {{.DOCKER_SERVICE}} coverage html --directory coverage/html
+
+  backend:lint:
+    desc: Run Python lint and format checks inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T --workdir /app {{.DOCKER_SERVICE}} ruff check --no-cache backend --extend-exclude backend/media,backend/static
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T --workdir /app {{.DOCKER_SERVICE}} ruff format --check --no-cache backend --extend-exclude backend/media,backend/static
+
+  backend:format:
+    desc: Format Python code inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T --workdir /app {{.DOCKER_SERVICE}} ruff check --fix --no-cache backend --extend-exclude backend/media,backend/static
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T --workdir /app {{.DOCKER_SERVICE}} ruff format --no-cache backend --extend-exclude backend/media,backend/static
+
+  backend:check:
+    desc: Run Django checks and detect missing migrations inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T {{.DOCKER_SERVICE}} python manage.py check
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T {{.DOCKER_SERVICE}} python manage.py makemigrations --check --dry-run
+
+  backend:db:migrate:
+    desc: Apply Django migrations inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T {{.DOCKER_SERVICE}} python manage.py migrate
+
+  backend:db:makemigrations:
+    desc: Create Django migrations inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec -T {{.DOCKER_SERVICE}} python manage.py makemigrations {{.CLI_ARGS}}
+
+  backend:db:createsuperuser:
+    desc: Create a Django admin account inside Docker
+    dir: '{{.ROOT_DIR}}'
+    interactive: true
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py createsuperuser
+
+  backend:shell:django:
+    desc: Open a Django shell inside Docker
+    cmds:
+      - task: shell
+
+  backend:ephemeris:download:
+    desc: Download NASA SPICE data inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py download_ephemeris
+
+  backend:features:load:
+    desc: Download and load the USGS lunar feature catalog
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py import_lunar_features
+
+  backend:terrain:prepare:
+    desc: Cache terrain samples and horizons for one saved sunlight site
+    dir: '{{.ROOT_DIR}}'
+    requires:
+      vars: [DATASET_ID, SELECTION_ID]
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py prepare_sunlight {{.DATASET_ID}} {{.SELECTION_ID}} --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:import-files:
+    desc: Transfer file-based terrain into database rows inside Docker
+    dir: '{{.ROOT_DIR}}'
+    requires:
+      vars: [DATASET_ID]
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py import_terrain_tiles {{.DATASET_ID}}
+
+  backend:terrain:4:
+    desc: Download and load global LOLA terrain at 4 pixels per degree
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain 4 --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:16:
+    desc: Download and load global LOLA terrain at 16 pixels per degree
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain 16 --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:64:
+    desc: Download and load global LOLA terrain at 64 pixels per degree
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain 64 --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:128:
+    desc: Download and load global LOLA terrain at 128 pixels per degree
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain 128 --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:256:
+    desc: Download and load global LOLA terrain at 256 pixels per degree
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain 256 --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:512:
+    desc: Download and load global LOLA terrain at 512 pixels per degree
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain 512 --workers {{.TERRAIN_WORKERS}}
+
+  backend:terrain:south-pole:
+    desc: Download and load global terrain with 80 m south-pole detail
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" exec {{.DOCKER_SERVICE}} python manage.py ingest_terrain south-pole --workers {{.TERRAIN_WORKERS}}
+
+  frontend:test:
+    desc: Run frontend tests inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" run --build --rm --no-deps frontend npm test
+
+  frontend:type-check:
+    desc: Check frontend types inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" run --build --rm --no-deps frontend npm run type-check
+
+  frontend:lint:
+    desc: Lint frontend code inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" run --build --rm --no-deps frontend npm run lint
+
+  frontend:format:
+    desc: Format frontend source inside Docker
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - docker compose -f "{{.DOCKER_COMPOSE}}" run --build --rm --no-deps frontend npm run format
+
+  frontend:build:
+    desc: Build frontend assets into the application image
+    cmds:
+      - task: build

@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Show setup tasks
+    cmds:
+      - task --list
+    silent: true
+
+  all:
+    desc: Build and start the Docker development stack
+    cmds:
+      - task: docker
+
+  docker:
+    desc: Set up the Docker development stack
+    cmds:
+      - task: :docker:setup
+
+  hooks:
+    desc: Install optional pre-commit hooks using uv
+    cmds:
+      - uv run --locked pre-commit install

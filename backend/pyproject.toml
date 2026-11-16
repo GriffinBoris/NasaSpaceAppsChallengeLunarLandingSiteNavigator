@@ -1,0 +1,32 @@
+[project]
+name = "lunar-navigator-backend"
+version = "0.1.0"
+description = "Django REST API for the Lunar Landing Site Navigator"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<5.3",
+    "djangorestframework>=3.15.2,<4",
+    "drf-standardized-errors>=0.14.1,<1",
+    "python-dotenv>=1.0.1,<2",
+    "numpy>=2,<3",
+    "rasterio>=1.4,<2",
+    "spiceypy>=8,<9",
+    "certifi>=2025.1.31",
+    "open3d>=0.20,<0.21",
+    "celery[redis]>=5.6.3,<6",
+]
+
+[dependency-groups]
+dev = ["coverage>=7.7,<8", "pytest>=8.3,<10", "pytest-django>=4.10,<5"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core.settings.dev_pytest"
+testpaths = ["core/tests", "terrain/tests", "ephemeris/tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["core", "terrain", "ephemeris"]
+omit = ["*/tests/*", "*/migrations/*", "*/settings/*", "*/asgi.py", "*/wsgi.py"]
+
+[tool.coverage.html]
+directory = "../coverage/html"
